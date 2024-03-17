@@ -2,7 +2,7 @@ from GameOptions import GameOptions
 
 class Game:
     Micro = GameOptions('MB')
-    # MixedArcade = GameOptions('MIN', 8, 24)
+    MixedArcade = GameOptions('MIN', 8, 24)
     Draw = GameOptions('DMT', 5, 8) 
     Build = GameOptions('BLD', 8, 12)
     TurfWars = GameOptions('TF', 8, 16)
@@ -39,4 +39,3 @@ class Game:
                         True, True, True, 
                         False, True, False)
 
-print(Game.Skywars.convert_to_server_group())

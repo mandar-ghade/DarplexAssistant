@@ -1,8 +1,17 @@
 from dataclasses import dataclass
+from RedisAssistant import RedisAssistant
 from Region import Region
-from pprint import pprint
 
-from redis_utils import GAMEMODES_TO_GAME_DISPLAY, REDIS_KEYS_TO_GAME_DISPLAY, TEAM_SERVER_KEYS, npc_name_from_prefix
+def convert_to_str(line: str | int | bool | Region) -> str:
+    """Converts data type to string for redis insertion."""
+    if isinstance(line, str):
+        return line
+    elif isinstance(line, bool):
+        return str(line).lower()
+    elif isinstance(line, int):
+        return str(line)
+    elif isinstance(line, Region):
+        return line.value
 
 @dataclass
 class ServerGroup:
@@ -51,4 +60,63 @@ class ServerGroup:
     portalBottomCornerLocation: str = '' #unused
     portalTopCornerLocation: str = '' #unused
     npcName: str = ''
-    
+    cpu: int = 1
+
+    def _convert_to_dict(self) -> dict[str, str]:
+        """Converts ServerGroup object to dictionary."""
+        return dict((key, convert_to_str(val)) for key, val in self.__dict__.items())
+
+    def _create(self) -> None:
+        """
+        Creates the ServerGroup key in Redis.
+        Only creates key if not exists. 
+        Does not rewrite data.
+
+        Use with Game module.
+        
+        >>> from Game import Game
+
+        >>> Game.Micro._convert_to_server_group()._create()
+        None
+        
+        Proper usage:
+
+        >>> from Game import Game
+        
+        >>> Game.Micro.create()
+        None
+
+        """
+        ra = RedisAssistant.create_session()
+        if ra.server_group_exists(self.prefix):
+            return
+        ra.redis.sadd('servergroups', self.prefix)
+        ra.redis.hmset(f'servergroups.{self.prefix}', self._convert_to_dict())
+
+    def _delete(self) -> None:
+        """
+        Creates the ServerGroup key in Redis.
+        Only creates key if not exists. 
+        Does not rewrite data.
+
+        Use with Game module.
+        
+        >>> from Game import Game
+        
+        >>> Game.Micro._convert_to_server_group()._delete()
+        None
+        
+        Proper usage:
+
+        >>> from Game import Game
+        
+        >>> Game.Micro.delete()
+        None
+
+        """
+        ra = RedisAssistant.create_session()
+        if not ra.server_group_exists(self.prefix):
+            return
+        ra.redis.srem('servergroups', self.prefix)
+        ra.redis.delete(f'servergroups.{self.prefix}')
+
