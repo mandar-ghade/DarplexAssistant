@@ -1,8 +1,6 @@
-
-from enum import Enum
 from GameOptions import GameOptions
 
-class Game(Enum):
+class Game:
     Micro = GameOptions('MB')
     # MixedArcade = GameOptions('MIN', 8, 24)
     Draw = GameOptions('DMT', 5, 8) 
@@ -41,5 +39,4 @@ class Game(Enum):
                         True, True, True, 
                         False, True, False)
 
-# print(Game['Micro'].value.prefix)
-# print([name for name in [g.name for g in Game]])
+print(Game.Skywars.convert_to_server_group())

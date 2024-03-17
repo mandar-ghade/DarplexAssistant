@@ -6,8 +6,7 @@ from redis_utils import GAMEMODES_TO_GAME_DISPLAY, REDIS_KEYS_TO_GAME_DISPLAY, T
 
 @dataclass
 class ServerGroup:
-    prefix: str 
-    host: str
+    prefix: str
     ram: int
     totalServers: int
     joinableServers: int
@@ -16,6 +15,8 @@ class ServerGroup:
     worldZip: str
     plugin: str
     configPath: str
+    name: str = ''
+    host: str = ''
     minPlayers: int = 1
     maxPlayers: int = 50
     pvp: bool = False
@@ -51,19 +52,3 @@ class ServerGroup:
     portalTopCornerLocation: str = '' #unused
     npcName: str = ''
     
-    def __post_init__(self):
-        self.region = self.region.value
-        if self.arcadeGroup and self.serverType != 'PLAYER':
-            self.serverType = 'Minigames'
-        self.teamServerKey = TEAM_SERVER_KEYS.get(self.prefix, '')
-        self.npcName = npc_name_from_prefix(self.prefix)
-        if self.prefix == 'MIN':
-            self.games = 'BaconBrawl,Lobbers,DeathTag,DragonEscape,Dragons,Evolution,Micro,MilkCow,Paintball,Quiver,Runner,Sheep,Snake,SneakyAssassins,Spleef,SquidShooter,TurfWars,WitherAssault'
-        else:
-            self.games = REDIS_KEYS_TO_GAME_DISPLAY.get(self.prefix, GAMEMODES_TO_GAME_DISPLAY.get(self.npcName, 'null'))
-
-
-sg = ServerGroup('CW4', 'Lobby-1', 512, 0, 0, 25701, False, 'Lobby.zip', 'lobby.jar', '/plugins/Hub')
-
-print(sg.__dict__.keys())
-pprint(sg, width=20)
