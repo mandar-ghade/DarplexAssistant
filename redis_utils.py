@@ -112,9 +112,8 @@ GAMEMODES_TO_BOOSTER_GROUPS = {
 
 
 def npc_name_from_prefix(prefix: str) -> str:
-    try:
-        return next(gamemode 
-                    for gamemode, prefixes in GAMEMODE_SERVERS.items()
-                    if prefix in prefixes)
-    except StopIteration:
-        return ''
+    for gamemode, prefixes in GAMEMODE_SERVERS.items():
+        if prefix not in prefixes:
+            continue
+        return gamemode
+    return ''

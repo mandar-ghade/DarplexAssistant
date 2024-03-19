@@ -1,7 +1,23 @@
+import json
+import os
 from redis import Redis
 from random import randint
-from typing import Self
-import json
+from typing import Iterable, Iterator, Self
+import time
+import toml
+
+DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
+    'redis_user': {
+        'redis_address': '127.0.0.1',
+        'redis_port': 6379,
+    },
+    'server_monitor_options': {
+        'ram': '6000',
+        'servers_directory': 'home/mineplex/servers',
+        'jars_directory': 'home/mineplex/jars',
+        'world_zip_folder_directory': 'home/mineplex/worlds',
+    }
+}
 
 class RedisAssistant:
     def __init__(self, host: str, port: int) -> None:
@@ -21,6 +37,18 @@ class RedisAssistant:
             port = randint(25000, 26000)
         return port
 
+    def get_server_statuses(self) -> Iterator[str]:
+        for group in self.redis.scan_iter('serverstatus.minecraft.US.*'):
+            yield group
+
+    def get_server_group_uptime(self) -> Iterator[tuple[dict[str, str | int], bool]]:
+        for group in self.get_server_statuses():
+            group = self.redis.get(group)
+            group  = json.loads(str(group))
+            is_online = (time.time() * 1000 - int(group.get('_currentTime'))) <= 10000
+            yield (group, is_online)
+
+
     @classmethod
     def create_session(cls) -> Self:
         """
@@ -30,11 +58,18 @@ class RedisAssistant:
         - Address: 127.0.0.1
         - Port: 6379
 
-        Change these in `config.json`
+        Change these in `config.toml`
 
         """
-        with open('config.json', 'r') as fp:
-            data = json.load(fp)
-        address, port = data.get('redisAddress'), data.get('redisPort')
+        if not os.path.exists('config.toml'):
+            with open('config.toml', 'w') as fp:
+                toml.dump(DEFAULT_TOML_CONF, fp)
+        with open('config.toml', 'r') as fp:
+            data = toml.load(fp).get('redis_user', None)
+        address, port = data.get('redis_address', '127.0.0.1'), data.get('redis_port', 6379)
         return cls(address, port)
 
+
+# ra = RedisAssistant.create_session()
+# for group, is_online in ra.get_server_group_uptime():
+#    print(group, is_online)

@@ -1,0 +1,3 @@
+[redis_user]
+redis_address = "127.0.0.1"
+redis_port = 6379

@@ -36,7 +36,7 @@ class GameOptions:
     hotbarHubClock: bool = True
     playerKickIdle: bool = True
 
-    def _convert_to_server_group(self, **kwargs) -> ServerGroup:
+    def _convert_to_server_group(self) -> ServerGroup:
         """Converts GameOptions to ServerGroup."""
         npcName = npc_name_from_prefix(self.prefix)
         boosterGroup = GAMEMODES_TO_BOOSTER_GROUPS.get(npcName, '')
