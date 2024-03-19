@@ -66,24 +66,38 @@ class ServerGroup:
         """Converts ServerGroup object to dictionary."""
         return dict((key, convert_to_str(val)) for key, val in self.__dict__.items())
 
+    def get_create_cmd(self, server_num: int) -> str:
+        return (f'python3 startServer.py 127.0.0.1 127.0.0.1 {self.portSection}'
+                f' {self.ram}'
+                f' {self.worldZip}'
+                f' {self.plugin}'
+                f' {self.configPath}'
+                f' {self.prefix}'
+                f' {self.prefix}-{server_num}'
+                f' {convert_to_str(self.region == Region.US)}'
+                f' {convert_to_str(self.addNoCheat)}'
+                f' {convert_to_str(self.addWorldEdit)}')
+
     def _create(self) -> None:
         """
         Creates the ServerGroup key in Redis.
         Only creates key if not exists. 
         Does not rewrite data.
 
-        Use with Game module.
+        Use with ServerType and GameType modules.
         
-        >>> from Game import Game
+        >>> from ServerType import ServerType
+        >>> from GameType import GameType
 
-        >>> Game.Micro._convert_to_server_group()._create()
+        >>> ServerType(GameType.Micro).options._convert_to_server_group().create()
         None
         
         Proper usage:
 
-        >>> from Game import Game
+        >>> from ServerType import ServerType
+        >>> from GameType import GameType
         
-        >>> Game.Micro.create()
+        >>> ServerType(GameType.Micro).create()
         None
 
         """
@@ -101,16 +115,18 @@ class ServerGroup:
 
         Use with Game module.
         
-        >>> from Game import Game
-        
-        >>> Game.Micro._convert_to_server_group()._delete()
+        >>> from ServerType import ServerType
+        >>> from GameType import GameType
+
+        >>> ServerType(GameType.Micro).options._convert_to_server_group().delete()
         None
         
         Proper usage:
 
-        >>> from Game import Game
+        >>> from ServerType import ServerType
+        >>> from GameType import GameType
         
-        >>> Game.Micro.delete()
+        >>> ServerType(GameType.Micro).delete()
         None
 
         """

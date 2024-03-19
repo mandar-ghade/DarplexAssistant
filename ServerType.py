@@ -48,7 +48,7 @@ class ServerTypeNotExistsException(Exception):
 
 @dataclass
 class ServerType:
-    server: GameType | int
+    server: GameType | str
 
     def __post_init__(self) -> None:
         assert (isinstance(self.server, str) or isinstance(self.server, GameType))
@@ -80,3 +80,4 @@ class ServerType:
     def delete(self) -> None:
         self.options.delete()
 
+print(ServerType('ChampionsDOM').options._convert_to_server_group())
