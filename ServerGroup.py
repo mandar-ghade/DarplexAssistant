@@ -80,6 +80,9 @@ class ServerGroup:
 
     def _create(self) -> None:
         """
+        (Do not use this method.
+        Direct implementation and proper usage is shown below)
+        
         Creates the ServerGroup key in Redis.
         Only creates key if not exists. 
         Does not rewrite data.
@@ -109,6 +112,9 @@ class ServerGroup:
 
     def _delete(self) -> None:
         """
+        (Do not use this method.
+        Direct implementation and proper usage is shown below)
+
         Creates the ServerGroup key in Redis.
         Only creates key if not exists. 
         Does not rewrite data.

@@ -40,15 +40,20 @@ class RedisAssistant:
         return port
 
     def get_server_statuses(self) -> Iterator[str]:
-        """Returns Iterator of ServerStatus (servergroup caches)"""
+        """Returns Iterator of ServerStatus (servergroup caches)."""
         for group in self.redis.scan_iter('serverstatus.minecraft.US.*'):
+            yield group
+
+    def get_server_groups(self) -> Iterator[str]:
+        """Returns Iterator of ServerGroups."""
+        for group in self.redis.scan_iter('servergroups.*'):
             yield group
 
     def get_server_group_uptime(self) -> Iterator[tuple[dict[str, str | int], bool]]:
         """Returns Iterator of a tuple of ServerStatus (dict) and is_online (bool)"""
         for group in self.get_server_statuses():
             group = self.redis.get(group)
-            group  = json.loads(str(group))
+            group = json.loads(str(group))
             is_online = (time.time() * 1000 - int(group.get('_currentTime'))) <= 10000
             yield (group, is_online)
 
@@ -56,7 +61,7 @@ class RedisAssistant:
         """
         Returns matching Region object to region_str.
         Defaults to Region.ALL.
-        (Will rewrite this to be non-class method in future)
+        (Will rewrite this to be static method in future)
         """
         for region in Region:
             if region.value != region_str:
@@ -67,7 +72,7 @@ class RedisAssistant:
     def convert_dict_to_server_group_insertable(self, prefix: str) -> dict[str, Region | str | bool | int]:
         """
         Does opposite of convert_to_str in ServerGroup
-        (Will rewrite this to be non-class method in future)
+        (Will rewrite this to be static method in future)
         """
         input_dict: dict[str, str] = self._fetch_server_group(prefix)
         sg_dict = dict[str, Region | str | bool | int]()
@@ -116,4 +121,4 @@ class RedisAssistant:
 
 # ra = RedisAssistant.create_session()
 # for group, is_online in ra.get_server_group_uptime():
-#    print(group, is_online)
+#   print(group, is_online)

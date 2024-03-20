@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from typing import Callable, Iterable, Iterator
@@ -45,7 +46,7 @@ def gametypes_iterator_to_options(servers: Iterable[GameType] | GameType) -> Ite
     if isinstance(servers, GameType) and servers != GameType.ALL:
         yield ServerType(servers)
         return
-    elif servers == GameType.ALL:
+    elif isinstance(servers, GameType) and servers == GameType.ALL:
         it = iter(servers.value) # makes tuple of enums into iterator
     else:
         it = iter(servers)
@@ -58,11 +59,70 @@ def print_servers() -> None:
     
     pass
 
+# Could be simplified to just using a map function...
+# More than one name per group? (DOM-2, DOM-1, ...) for DOM
+def extract_group_name_from_servers(groups: Iterable[dict[str, str | int]]) -> Iterator[str]:
+    """
+    Returns group name from Iterator of server groups. 
 
+    Use in coordination with `RedisAssistant`.
+
+    Example usage:
+
+    >>> from RedisAssistant import RedisAssistant
+    >>> groups = RedisAssistant.create_session().get_server_group_uptime()
+    >>> servers = (group for group, is_online in groups if is_online)
+    >>> extract_group_name_from_servers(servers)
+    """
+    it = iter(groups)
+
+    for group in groups:
+        yield str(group.get('_group'))
+
+
+def strip_servergroup_label(server_group: str) -> str:
+    """Strips ServerGroup label. Returns ServerGroup name.
+    >>> strip_servergroup_label('servergroups.MIN')
+    'MIN'
+    """
+    return server_group.replace('servergroups.', '') 
+
+#perhaps I should just integrate ServerStatus groups instead of using confusing dicts?
 def view_server_statuses() -> None:
-    """Returns all servers' uptime information."""
-    RedisAssistant.create_session().get_server_group_uptime()
-    pass
+    """
+    Returns all servers' uptime information.
+
+    (Will rewrite using ServerStatus and ServerGroup classes to remove hard-to-read code)
+    """
+    ra = RedisAssistant.create_session()
+    groups = ra.get_server_group_uptime()
+    online_servers = (group for group, is_online in groups if is_online)
+    online_servers_copy = list(online_servers).copy() # done because online_servers gets wiped of its contents for some reason?
+    offline_server_statuses = (group for group, is_online in groups if not is_online) # will perhaps be used later?
+    online_server_names = set(extract_group_name_from_servers(online_servers))
+    offline_server_names = set(map(strip_servergroup_label, ra.get_server_groups())).difference(online_server_names)
+    print('Online Servers: ')
+    for online_serv in online_servers_copy:
+        print(f'- {online_serv.get("_name")}:')
+        print(f'    - Port: {online_serv.get("_port")}')
+        print(f'    - Uptime: Up since {online_serv.get("_startUpDate")}ms') # convert to Datetime later
+        print(f'    - RAM: {online_serv.get("_ram")}MB') 
+        print(f"    - Players: {online_serv.get('_playerCount')}")
+        if online_serv.get('_motd') != 'A Minecraft Server': # For arcade groups
+            motd = json.loads(str(online_serv.get("_motd")))
+            print(f'    - Arcade Stats:')
+            print(f'        - Game: {motd.get("_game")}')
+            print(f'        - Mode: {motd.get("_mode")}')
+            print(f'        - Status: {motd.get("_status")}')
+            print(f'        - Joinable: {motd.get("_joinable")}')
+    print('\nOffline Servers:')
+    for offline_serv in offline_server_names:
+        group = ra.convert_dict_to_server_group_insertable(offline_serv) # rename func very unreadible
+        print(f'- {offline_serv}:')
+        print(f'    - Port Section: {group.get("portSection")}')
+        print(f'    - Ram: {group.get("ram")}MB')
+        print(f'    - Total Servers: {group.get("totalServers")}')
+        print(f'    - Joinable Servers: {group.get("joinableServers")}')
 
 
 def get_redis_info() -> None:
@@ -144,6 +204,7 @@ def main() -> None:
         if command is None:
             input('Command does not exist. Please try again.')
             continue
+        clear_screen()
         command()
         input('')
 
