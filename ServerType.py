@@ -80,4 +80,6 @@ class ServerType:
     def delete(self) -> None:
         self.options.delete()
 
-print(ServerType('ChampionsDOM').options._convert_to_server_group())
+    def exists(self) -> bool:
+        return self.options.exists()
+

@@ -22,8 +22,4 @@ class GameType(Enum):
     ChampionsCTF = 'ChampionsCTF'
     Clans = 'Clans'
     ClansHub = 'ClansHub'
-    ALL = (Micro, MixedArcade, Draw, Build, 
-           TurfWars, SpeedBuilders, HideSeek, CakeWarsDuos, 
-           CakeWarsTeams, SurvivalGames, SurvivalGamesTeams,
-           Skywars, SkywarsTeams, Bridges, MineStrike, Smash,
-           SmashTeams, ChampionsDOM, ChampionsCTF, Clans, ClansHub)
+

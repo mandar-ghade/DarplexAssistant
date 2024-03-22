@@ -1,9 +1,11 @@
 import json
 import os
 import sys
-from typing import Callable, Iterable, Iterator
+from typing import Callable, Iterable, Iterator, Optional, Set
 from GameType import GameType
+from MinecraftServer import MinecraftServer
 from RedisAssistant import RedisAssistant
+from ServerGroup import ServerGroup
 from ServerType import ServerType
 
 LOGO = """
@@ -42,87 +44,57 @@ def menu() -> None:
     print(52 * ' ' + 'exit : Exits the program.')
 
 
-def gametypes_iterator_to_options(servers: Iterable[GameType] | GameType) -> Iterator[ServerType]:
-    if isinstance(servers, GameType) and servers != GameType.ALL:
-        yield ServerType(servers)
-        return
-    elif isinstance(servers, GameType) and servers == GameType.ALL:
-        it = iter(servers.value) # makes tuple of enums into iterator
-    else:
-        it = iter(servers)
-    for server in it:
-        yield ServerType(server)
-
-
 def print_servers() -> None:
     """Returns all servers and their online statuses."""
     
     pass
 
-# Could be simplified to just using a map function...
-# More than one name per group? (DOM-2, DOM-1, ...) for DOM
-def extract_group_name_from_servers(groups: Iterable[dict[str, str | int]]) -> Iterator[str]:
-    """
-    Returns group name from Iterator of server groups. 
 
-    Use in coordination with `RedisAssistant`.
-
-    Example usage:
-
-    >>> from RedisAssistant import RedisAssistant
-    >>> groups = RedisAssistant.create_session().get_server_group_uptime()
-    >>> servers = (group for group, is_online in groups if is_online)
-    >>> extract_group_name_from_servers(servers)
-    """
-    it = iter(groups)
-
-    for group in groups:
-        yield str(group.get('_group'))
+def return_minecraft_server_if_online(server: MinecraftServer) -> Optional[MinecraftServer]:
+    if server.is_online:
+        return server
 
 
-def strip_servergroup_label(server_group: str) -> str:
-    """Strips ServerGroup label. Returns ServerGroup name.
-    >>> strip_servergroup_label('servergroups.MIN')
-    'MIN'
-    """
-    return server_group.replace('servergroups.', '') 
-
-#perhaps I should just integrate ServerStatus groups instead of using confusing dicts?
 def view_server_statuses() -> None:
     """
     Returns all servers' uptime information.
-
-    (Will rewrite using ServerStatus and ServerGroup classes to remove hard-to-read code)
     """
     ra = RedisAssistant.create_session()
-    groups = ra.get_server_group_uptime()
-    online_servers = (group for group, is_online in groups if is_online)
-    online_servers_copy = list(online_servers).copy() # done because online_servers gets wiped of its contents for some reason?
-    offline_server_statuses = (group for group, is_online in groups if not is_online) # will perhaps be used later?
-    online_server_names = set(extract_group_name_from_servers(online_servers))
-    offline_server_names = set(map(strip_servergroup_label, ra.get_server_groups())).difference(online_server_names)
-    print('Online Servers: ')
-    for online_serv in online_servers_copy:
-        print(f'- {online_serv.get("_name")}:')
-        print(f'    - Port: {online_serv.get("_port")}')
-        print(f'    - Uptime: Up since {online_serv.get("_startUpDate")}ms') # convert to Datetime later
-        print(f'    - RAM: {online_serv.get("_ram")}MB') 
-        print(f"    - Players: {online_serv.get('_playerCount')}")
-        if online_serv.get('_motd') != 'A Minecraft Server': # For arcade groups
-            motd = json.loads(str(online_serv.get("_motd")))
-            print(f'    - Arcade Stats:')
-            print(f'        - Game: {motd.get("_game")}')
-            print(f'        - Mode: {motd.get("_mode")}')
-            print(f'        - Status: {motd.get("_status")}')
-            print(f'        - Joinable: {motd.get("_joinable")}')
-    print('\nOffline Servers:')
-    for offline_serv in offline_server_names:
-        group = ra.convert_dict_to_server_group_insertable(offline_serv) # rename func very unreadible
-        print(f'- {offline_serv}:')
-        print(f'    - Port Section: {group.get("portSection")}')
-        print(f'    - Ram: {group.get("ram")}MB')
-        print(f'    - Total Servers: {group.get("totalServers")}')
-        print(f'    - Joinable Servers: {group.get("joinableServers")}')
+    server_group_names = ra.get_server_groups()
+    for server_group_name in server_group_names:
+        prefix = server_group_name.strip('servergroup.')
+        server_group: ServerGroup = ServerGroup.convert_to_server_group(prefix)
+        servers = set(list(server_group.servers).copy())
+        online_servers: Set[MinecraftServer] = set(filter(return_minecraft_server_if_online, servers))
+        offline_servers: Set[MinecraftServer] = servers.difference(online_servers)
+        print(f'- {prefix}:')
+        print(f'    - Port Section: {server_group.portSection}')
+        print(f'    - Ram: {server_group.ram}MB')
+        print(f'    - Total Servers: {server_group.totalServers}')
+        print(f'    - Joinable Servers: {server_group.joinableServers}')
+        print(f'    - Offline Servers: {len(offline_servers)}')
+        print(f'    - Online Servers: {len(online_servers)}')
+        if len(online_servers) + len(offline_servers) > 0:
+            print(f'    - Servers:')
+        for online_server in online_servers:
+            print(f'        - {online_server.name} (Online):')
+            print(f'            - Port: {online_server.port}')
+            print(f'            - Uptime: Up since {online_server.start_up_date}') # convert to Datetime later
+            print(f'            - RAM: {online_server.ram}MB') 
+            print(f"            - Players: {online_server.player_count}")
+            if online_server.game is not None:
+                print(f'            - Arcade Stats:')
+                print(f'                - Game: {online_server.game}')
+                print(f'                - Mode: {online_server.mode}')
+                print(f'                - Status: {online_server.status.value}') # value will never return None
+                print(f'                - Joinable: {online_server.joinable.value}') # value will never return None
+        for offline_server in offline_servers:
+            print(f'        - {offline_server.name} (Offline):')
+            print(f'            - Port: {offline_server.port}')
+            print(f'            - Offline since: {offline_server.current_time}') # convert to Datetime later
+            print(f'            - RAM: {offline_server.ram}MB') 
+            print(f'            - Players: {offline_server.player_count}')
+        print()
 
 
 def get_redis_info() -> None:

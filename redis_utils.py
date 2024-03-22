@@ -1,4 +1,5 @@
 from typing import Optional
+from Region import Region
 
 
 ARCADE_DICT = {
@@ -117,3 +118,16 @@ def npc_name_from_prefix(prefix: str) -> str:
             continue
         return gamemode
     return ''
+
+
+def get_region_by_str(region_str: str) -> Region:
+    """
+    Returns matching Region object to region_str.
+    Defaults to Region.US.
+    """
+    for region in Region:
+        if region.value != region_str:
+            continue
+        return region
+    return Region.US #failsafe
+
