@@ -2,8 +2,7 @@ import json
 import os
 from redis import Redis
 from random import randint
-from typing import Iterable, Iterator, Optional, Self
-import time
+from typing import Iterator, Self
 import toml
 
 
@@ -19,6 +18,7 @@ DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
         'world_zip_folder_directory': 'home/mineplex/worlds',
     }
 }
+
 
 class RedisAssistant:
     def __init__(self, host: str, port: int) -> None:
@@ -38,30 +38,18 @@ class RedisAssistant:
             port = randint(25000, 26000)
         return port
 
-    def get_available_server_statuses(self) -> Iterator[str]:
+    def get_available_minecraft_servers(self) -> Iterator[str]:
         """
-        Returns Iterator of ServerStatus names.
+        Returns Iterator of cached Minecraft servers.
         ServerStatus is a cached ServerGroup for online servers.
         """
         for group in self.redis.scan_iter('serverstatus.minecraft.US.*'):
             yield group
 
     def get_server_groups(self) -> Iterator[str]:
-        """
-        Returns Iterator of ServerGroups names.
-        Ex: servergroups.Lobby.
-        """
+        """Returns Iterator of ServerGroups keys."""
         for group in self.redis.scan_iter('servergroups.*'):
             yield group
-
-    def get_server_statuses(self) -> Iterator[tuple[dict[str, str | int], bool]]:
-        """Returns Iterator of a tuple of ServerStatus (dict) and is_online (bool)"""
-        for group in self.get_available_server_statuses():
-            group = self.redis.get(group)
-            group = json.loads(str(group))
-            is_online = (time.time() * 1000 - int(group.get('_currentTime'))) <= 10000
-            yield (group, is_online)
-
 
     @classmethod
     def create_session(cls) -> Self:
@@ -83,5 +71,3 @@ class RedisAssistant:
         address, port = data.get('redis_address', '127.0.0.1'), data.get('redis_port', 6379)
         return cls(address, port)
 
-
-ra = RedisAssistant.create_session()

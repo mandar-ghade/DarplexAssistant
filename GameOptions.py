@@ -39,7 +39,6 @@ class GameOptions:
 
     def _convert_to_server_group(self) -> ServerGroup:
         """Converts GameOptions to ServerGroup."""
-        # need to check if servergroup already exists, and extract params if it does.
         ra = RedisAssistant.create_session()
         if ra.server_group_exists(self.prefix):
             return ServerGroup.convert_to_server_group(self.prefix)

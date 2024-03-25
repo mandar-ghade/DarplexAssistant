@@ -5,6 +5,11 @@ from RedisAssistant import RedisAssistant
 from Region import Region
 from redis_utils import get_region_by_str
 
+
+class ServerGroupNotExistsException(Exception):
+    pass
+
+
 def convert_to_str(line: str | int | bool | Region) -> str:
     """Converts data type to string for redis insertion."""
     if isinstance(line, str):
@@ -59,31 +64,37 @@ class ServerGroup:
     hardMaxPlayerCap: bool = False
     staffOnly: bool = False
     whitelist: bool = False
-    resourcePack: str = '' #unused
+    resourcePack: str = '' 
     region: Region = Region.US
     teamServerKey: str = ''
-    portalBottomCornerLocation: str = '' #unused
-    portalTopCornerLocation: str = '' #unused
+    portalBottomCornerLocation: str = ''
+    portalTopCornerLocation: str = '' 
     npcName: str = ''
     cpu: int = 1
     servers: Iterator[MinecraftServer] = iter([])
 
+    def _exists(self) -> bool:
+        """Returns if ServerGroup exists in Redis DB."""
+        ra = RedisAssistant.create_session()
+        exists = ra.redis.hgetall(f'servergroups.{self.prefix}') is not None
+        ra.redis.close()
+        return exists
+
     def __post_init__(self) -> None:
         self._update_servers()
 
-    #Make this loop every few seconds.
+    # Run this every few seconds in the monitor.
     def _update_servers(self) -> None:
-        """Updates Servers."""
-        ra = RedisAssistant.create_session()
-        self.servers = get_minecraft_servers_by_prefix(self.prefix)
-        ra.redis.close()
+        """Updates Minecraft Servers."""
+        servers = list(get_minecraft_servers_by_prefix(self.prefix))
+        self.servers = iter(list(filter(lambda server: server.exists, servers)))
 
     def _convert_to_dict(self) -> dict[str, str]:
         """Converts ServerGroup object to dictionary."""
         return dict((key, convert_to_str(val)) for key, val in self.__dict__.items())
 
     def get_create_cmd(self, server_num: int) -> str:
-        return (f'python3 startServer.py 127.0.0.1 127.0.0.1 {self.portSection}'
+        return (f'python3 startServer.py 127.0.0.1 127.0.0.1 {self.portSection + server_num}'
                 f' {self.ram}'
                 f' {self.worldZip}'
                 f' {self.plugin}'
@@ -93,6 +104,17 @@ class ServerGroup:
                 f' {convert_to_str(self.region == Region.US)}'
                 f' {convert_to_str(self.addNoCheat)}'
                 f' {convert_to_str(self.addWorldEdit)}')
+
+    def get_delete_cmd(self, server_num: int) -> str:
+        return f'python3 stopServer.py 127.0.0.1 {self.prefix}-{server_num}'
+
+    def deploy(self, server_id: int) -> None:
+        """Deploys server."""
+        pass
+
+    def kill(self, server_id: int) -> None:
+        """Kills server."""
+        pass
 
     def _create(self) -> None:
         """
@@ -125,6 +147,17 @@ class ServerGroup:
             return
         ra.redis.sadd('servergroups', self.prefix)
         ra.redis.hmset(f'servergroups.{self.prefix}', self._convert_to_dict())
+        ra.redis.close()
+    
+    def _overwrite(self) -> None:
+        """
+        Recreates Redis ServerGruop.
+        """
+        ra = RedisAssistant.create_session()
+        if ra.server_group_exists(self.prefix):
+            self._delete()
+        self._create()
+        ra.redis.close()
 
     def _delete(self) -> None:
         """
@@ -157,14 +190,17 @@ class ServerGroup:
             return
         ra.redis.srem('servergroups', self.prefix)
         ra.redis.delete(f'servergroups.{self.prefix}')
-
+        ra.redis.close()
 
     @classmethod
     def convert_to_server_group(cls, prefix: str) -> Self:
+        """Converts to ServerGroup object from prefix (if it exists in redis)."""
         ra = RedisAssistant.create_session()
         next_port = ra.next_available_port()
-        data: dict[str, str] = ra.redis.hgetall(f'servergroups.{prefix}')
-        ra.redis.quit()
+        data: Optional[dict[str, str]] = ra.redis.hgetall(f'servergroups.{prefix}')
+        if data is None:
+            raise ServerGroupNotExistsException
+        ra.redis.close()
         return cls(
             prefix = data.get('prefix', ''),
             ram = int(data.get('ram', 512)),

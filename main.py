@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import json
 import os
 import sys
@@ -32,7 +33,7 @@ def menu() -> None:
     print(70 * ' ' + 'Welcome to Redis Assistant!\n\n')
     print(79 * ' ' + 'Commands\n\n')
     print(52 * ' ' + 'printservers : Returns all servers and their online statuses.\n')
-    print(52 * ' ' + 'server-status-info : Returns all servers uptime information.\n')
+    print(52 * ' ' + 'server-status-info : Returns detailed server uptime statistics.\n')
     print(52 * ' ' + 'redis-info : View all current redis keys.')
     print(52 * ' ' + 'setup-redis : Sets up multiple game redis keys. Sends you into setup mode.')
     print(52 * ' ' + 'create-server-group : Create particular game server. Enters you into setup mode.')
@@ -45,43 +46,73 @@ def menu() -> None:
 
 
 def print_servers() -> None:
-    """Returns all servers and their online statuses."""
-    
-    pass
-
-
-def return_minecraft_server_if_online(server: MinecraftServer) -> Optional[MinecraftServer]:
-    if server.is_online:
-        return server
+    """
+    Returns all servers and their online statuses.
+    (Simplified version of view_server_statuses)
+    """
+    ra = RedisAssistant.create_session()
+    server_group_names = set(ra.get_server_groups())
+    if len(set(server_group_names)) > 0:
+        largest_sg_name: str = next(iter(sorted(server_group_names, key=len, reverse=True)))
+        largest_output_str_len = len(f'[{largest_sg_name}] |')
+    for server_group_name in sorted(server_group_names):
+        output_str = f'[{server_group_name}]'
+        output_str += ' ' * (largest_output_str_len - len(output_str) - 1) + '| '
+        init_output_len = len(output_str)
+        prefix = server_group_name.replace('servergroups.', '')
+        server_group = ServerGroup.convert_to_server_group(prefix)
+        total_servers = set(server_group.servers)
+        online_servers: set[MinecraftServer] = set(server for server in total_servers if server.is_online)
+        player_count = sum(server.player_count for server in online_servers)
+        status = 'Online' if len(online_servers) > 0 else 'Offline'
+        output_str += f'Port Section: {server_group.portSection} | Servers {status} '
+        if len(online_servers) > 0:
+            output_str += f'| Players: {player_count} ' \
+                          f'| {len(online_servers)}/{len(total_servers)} servers launched ' \
+                           '|\n'
+            output_str += f'\n'.join(f'{' ' * (init_output_len - 2)}' 
+                                     f'| {online_serv.name} '
+                                     f'| Port: {online_serv.port} '
+                                     f'| Players: {online_serv.player_count}/{online_serv.max_player_count} '
+                                      '|'
+                                     for online_serv in online_servers)
+        print(output_str)
+    ra.redis.close()
 
 
 def view_server_statuses() -> None:
     """
-    Returns all servers' uptime information.
+    Returns detailed server uptime statistics.
     """
     ra = RedisAssistant.create_session()
     server_group_names = ra.get_server_groups()
+    max_ram = 0
+    ram_usage = 0
     for server_group_name in server_group_names:
-        prefix = server_group_name.strip('servergroup.')
+        prefix = server_group_name.replace('servergroups.', '')
         server_group: ServerGroup = ServerGroup.convert_to_server_group(prefix)
-        servers = set(list(server_group.servers).copy())
-        online_servers: Set[MinecraftServer] = set(filter(return_minecraft_server_if_online, servers))
+        servers = set(server_group.servers)
+        online_servers = set(server for server in servers if server.is_online)
         offline_servers: Set[MinecraftServer] = servers.difference(online_servers)
         print(f'- {prefix}:')
         print(f'    - Port Section: {server_group.portSection}')
-        print(f'    - Ram: {server_group.ram}MB')
+        print(f'    - Max Ram: {server_group.ram}MB')
         print(f'    - Total Servers: {server_group.totalServers}')
         print(f'    - Joinable Servers: {server_group.joinableServers}')
-        print(f'    - Offline Servers: {len(offline_servers)}')
-        print(f'    - Online Servers: {len(online_servers)}')
         if len(online_servers) + len(offline_servers) > 0:
+            print(f'    - Servers Launched: {len(online_servers)}/{len(servers)}')
+            print(f'    - Total Players: {sum(server.player_count for server in online_servers)}')
             print(f'    - Servers:')
         for online_server in online_servers:
+            max_ram += server_group.ram
+            ram = online_server.ram
+            ram_usage += ram
             print(f'        - {online_server.name} (Online):')
             print(f'            - Port: {online_server.port}')
-            print(f'            - Uptime: Up since {online_server.start_up_date}') # convert to Datetime later
-            print(f'            - RAM: {online_server.ram}MB') 
-            print(f"            - Players: {online_server.player_count}")
+            print(f'            - Startup Date: {online_server.start_up_date}') # will never be none if online
+            print(f'            - Uptime: {online_server.uptime} hours')
+            print(f'            - RAM usage: {ram}MB/{server_group.ram}MB')
+            print(f'            - Players: {online_server.player_count}/{server_group.maxPlayers}')
             if online_server.game is not None:
                 print(f'            - Arcade Stats:')
                 print(f'                - Game: {online_server.game}')
@@ -91,15 +122,20 @@ def view_server_statuses() -> None:
         for offline_server in offline_servers:
             print(f'        - {offline_server.name} (Offline):')
             print(f'            - Port: {offline_server.port}')
-            print(f'            - Offline since: {offline_server.current_time}') # convert to Datetime later
-            print(f'            - RAM: {offline_server.ram}MB') 
-            print(f'            - Players: {offline_server.player_count}')
+            print(f'            - Offline since: {offline_server.current_time}') 
+            print(f'            - Last uptime: {offline_server.uptime} hours') 
         print()
+    if max_ram != 0: 
+        print(f'Total ram usage: {ram_usage}MB/{max_ram}MB; {round((ram_usage / max_ram) * 100)}% ram usage.')
+    ra.redis.close()
 
 
 def get_redis_info() -> None:
     """View all current redis keys."""
-    pass
+    ra = RedisAssistant.create_session()
+    keys = sorted(ra.redis.scan_iter('*'))
+    for key in keys:
+        print(key)
 
 
 def setup_redis() -> None:
@@ -182,3 +218,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

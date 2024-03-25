@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from typing import Optional
 from GameOptions import GameOptions
 from GameType import GameType
+from ServerGroup import ServerGroup
 
 GAME_TYPE_TO_GAME_OPTIONS: dict[GameType, GameOptions] = {
     GameType.Micro: GameOptions('MB'),
@@ -49,6 +51,7 @@ class ServerTypeNotExistsException(Exception):
 @dataclass
 class ServerType:
     server: GameType | str
+    server_group: Optional[ServerGroup] = None
 
     def __post_init__(self) -> None:
         assert (isinstance(self.server, str) or isinstance(self.server, GameType))
@@ -61,6 +64,7 @@ class ServerType:
                                       if game_type.value == self.server))
         elif isinstance(self.server, GameType):
             self.options: GameOptions = GAME_TYPE_TO_GAME_OPTIONS.get(self.server, GameOptions('MIN', 8, 24)) # default is MixedArcade for typing sake
+        self.server_group = self.options._convert_to_server_group()
 
     def create(self) -> None:
         """
