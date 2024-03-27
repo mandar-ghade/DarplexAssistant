@@ -1,11 +1,11 @@
-
 from dataclasses import dataclass
-from RedisAssistant import RedisAssistant
-from Region import Region
+from typing import ClassVar, Self, Union
 
-from ServerGroup import ServerGroup
-from redis_utils import GAMEMODES_TO_BOOSTER_GROUPS, GAMEMODES_TO_GAME_DISPLAY, REDIS_KEYS_TO_GAME_DISPLAY, TEAM_SERVER_KEYS, npc_name_from_prefix
+from ..repository import RedisRepository 
+from ..server import ServerGroup
+from ..utils import GAMEMODES_TO_BOOSTER_GROUPS, GAMEMODES_TO_GAME_DISPLAY, REDIS_KEYS_TO_GAME_DISPLAY, TEAM_SERVER_KEYS, npc_name_from_prefix
 
+type Game = tuple[bool | int | str, ...]
 
 @dataclass
 class GameOptions:
@@ -36,10 +36,48 @@ class GameOptions:
     hotbarInventory: bool = True
     hotbarHubClock: bool = True
     playerKickIdle: bool = True
+    
+    Micro: ClassVar[Game] = ('MB',)
+    MixedArcade: ClassVar[Game] = ('MIN', 8, 24)
+    Draw: ClassVar[Game] = ('DMT', 5, 8)
+    Build: ClassVar[Game] = ('BLD', 8, 12)
+    TurfWars: ClassVar[Game] = ('TF', 8, 16)
+    SpeedBuilders: ClassVar[Game] = ('SB', 4, 8)
+    HideSeek: ClassVar[Game] = ('BH', 12, 24)
+    CakeWarsDuos: ClassVar[Game] = ('CW2', 10, 16)
+    CakeWarsTeams: ClassVar[Game] = ('CW4', 10, 16)
+    SurvivalGames: ClassVar[Game] = ('HG', 12, 24)
+    SurvivalGamesTeams: ClassVar[Game] = ('SG2', 12, 24)
+    Skywars: ClassVar[Game] = ('SKY', 8, 12)
+    SkywarsTeams: ClassVar[Game] = ('SKY2', 8, 12)
+    Bridges: ClassVar[Game] = ('BR', 20, 40)
+    MineStrike: ClassVar[Game] = ('MS', 8, 16)
+    Smash: ClassVar[Game] = ('SSM', 4, 6)
+    SmashTeams: ClassVar[Game] = ('SSM2', 4, 6)
+    ChampionsDOM: ClassVar[Game] = ('DOM', 8, 10)
+    ChampionsCTF: ClassVar[Game] = ('CTF', 10, 16)
+    Clans: ClassVar[Game] = ('Clans', 1, 50, False, 
+                        'clans.zip', 'Clans.jar', 
+                        'plugins/Clans', False, False, 
+                        False, 'dedicated', False, 
+                        True, False, False, 
+                        False, False, True, 
+                        False, False, True, 
+                        True, True, True, 
+                        False, True, False)
+    ClansHub: ClassVar[Game] = ('ClansHub', 1, 50, False, 
+                        'clanshub.zip', 'ClansHub.jar', 
+                        'plugins/ClansHub', False, False, 
+                        False, 'dedicated', False, 
+                        True, False, False, 
+                        False, False, True, 
+                        False, False, True, 
+                        True, True, True, 
+                        False, True, False)
 
     def _convert_to_server_group(self) -> ServerGroup:
         """Converts GameOptions to ServerGroup."""
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         if ra.server_group_exists(self.prefix):
             return ServerGroup.convert_to_server_group(self.prefix)
         ra.redis.close()
@@ -103,7 +141,22 @@ class GameOptions:
 
     def exists(self) -> bool:
         """Returns if ServerGroup with same prefix exists."""
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         exists = ra.server_group_exists(self.prefix)
         ra.redis.close()
         return exists
+
+    @classmethod
+    def convert_from_game(cls, 
+        game_options: tuple[Union[bool, int, str], ...]
+    ) -> Self:
+        """
+        Expands tuple of GameOption arguments (class variable) into GameOptions object.
+        Ex: 
+
+        >>> from DarplexAssistant import GameOptions
+        >>> GameOptions.convert_from_game_type(GameOptions.Micro)
+
+        """
+        return cls(*game_options) 
+

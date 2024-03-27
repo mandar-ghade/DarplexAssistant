@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from typing import Iterator, Optional, Self
-from MinecraftServer import MinecraftServer, get_minecraft_servers_by_prefix
-from RedisAssistant import RedisAssistant
-from Region import Region
-from redis_utils import get_region_by_str
+
+
+from .minecraft_server import MinecraftServer, get_minecraft_servers_by_prefix
+from ..repository import RedisRepository
+from ..utils import get_region_by_str, Region
 
 
 class ServerGroupNotExistsException(Exception):
@@ -71,23 +72,22 @@ class ServerGroup:
     portalTopCornerLocation: str = '' 
     npcName: str = ''
     cpu: int = 1
-    servers: Iterator[MinecraftServer] = iter([])
+    _servers: Iterator[MinecraftServer] = iter([])
 
     def _exists(self) -> bool:
         """Returns if ServerGroup exists in Redis DB."""
-        ra = RedisAssistant.create_session()
-        exists = ra.redis.hgetall(f'servergroups.{self.prefix}') is not None
-        ra.redis.close()
+        repository = RedisRepository.create_session()
+        exists = repository.server_group_exists(self.prefix)
+        repository.redis.close()
         return exists
 
     def __post_init__(self) -> None:
-        self._update_servers()
+        self._servers = self.servers
 
-    # Run this every few seconds in the monitor.
-    def _update_servers(self) -> None:
-        """Updates Minecraft Servers."""
-        servers = list(get_minecraft_servers_by_prefix(self.prefix))
-        self.servers = iter(list(filter(lambda server: server.exists, servers)))
+    @property
+    def servers(self) -> Iterator[MinecraftServer]:
+        self._servers = iter(filter(lambda server: server.exists, get_minecraft_servers_by_prefix(self.prefix)))
+        return self._servers
 
     def _convert_to_dict(self) -> dict[str, str]:
         """Converts ServerGroup object to dictionary."""
@@ -107,14 +107,6 @@ class ServerGroup:
 
     def get_delete_cmd(self, server_num: int) -> str:
         return f'python3 stopServer.py 127.0.0.1 {self.prefix}-{server_num}'
-
-    def deploy(self, server_id: int) -> None:
-        """Deploys server."""
-        pass
-
-    def kill(self, server_id: int) -> None:
-        """Kills server."""
-        pass
 
     def _create(self) -> None:
         """
@@ -142,7 +134,7 @@ class ServerGroup:
         None
 
         """
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         if ra.server_group_exists(self.prefix):
             return
         ra.redis.sadd('servergroups', self.prefix)
@@ -151,9 +143,9 @@ class ServerGroup:
     
     def _overwrite(self) -> None:
         """
-        Recreates Redis ServerGruop.
+        Recreates Redis ServerGroup.
         """
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         if ra.server_group_exists(self.prefix):
             self._delete()
         self._create()
@@ -185,7 +177,7 @@ class ServerGroup:
         None
 
         """
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         if not ra.server_group_exists(self.prefix):
             return
         ra.redis.srem('servergroups', self.prefix)
@@ -195,7 +187,7 @@ class ServerGroup:
     @classmethod
     def convert_to_server_group(cls, prefix: str) -> Self:
         """Converts to ServerGroup object from prefix (if it exists in redis)."""
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         next_port = ra.next_available_port()
         data: Optional[dict[str, str]] = ra.redis.hgetall(f'servergroups.{prefix}')
         if data is None:

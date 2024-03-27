@@ -1,29 +1,19 @@
 import json
-import os
 from redis import Redis
 from random import randint
 from typing import Iterator, Self
 import toml
+from ..utils import CONFIG_PATH, create_config_if_not_exists, Region
 
 
-DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
-    'redis_user': {
-        'redis_address': '127.0.0.1',
-        'redis_port': 6379,
-    },
-    'server_monitor_options': {
-        'ram': '6000',
-        'servers_directory': 'home/mineplex/servers',
-        'jars_directory': 'home/mineplex/jars',
-        'world_zip_folder_directory': 'home/mineplex/worlds',
-    }
-}
-
-
-class RedisAssistant:
+class RedisRepository:
     def __init__(self, host: str, port: int) -> None:
         self.redis = Redis(host=host, port=port, db=0, decode_responses=True)
     
+    def close_connection(self) -> None:
+        """Closes redis connection."""
+        self.redis.close()
+
     def server_group_exists(self, prefix: str) -> bool:
         """Returns whether a server-group exists based on prefix."""
         for _ in self.redis.scan_iter(f'servergroups.{prefix}'):
@@ -51,10 +41,32 @@ class RedisAssistant:
         for group in self.redis.scan_iter('servergroups.*'):
             yield group
 
+    def get_if_minecraft_server_exists(self, server_name: str) -> bool:
+        """Returns if MinecraftServer exists in the Redis cache."""
+        return self.redis.get(f'serverstatus.minecraft.US.{server_name}') is not None
+
+    def get_server_group_dict(self, group: str) -> dict[str, str]:
+        """Returns Json dictionary of ServerGroup from Redis."""
+        group = group.replace('servergroups.', '')
+        res = self.redis.get(f'servergroups.{group}')
+        if res is None:
+            return {}
+        return json.loads(str(res).replace("'", '"'))
+    
+    def get_server_status_dict(self, server_name: str, region: Region) -> dict[str, str]:
+        """Returns Json dictionary of ServerStatus from Redis."""
+        server_key = f'serverstatus.minecraft.{region.value}.{server_name}'
+        if server_name.count('.') == 3:
+            server_key = server_name
+        res = self.redis.get(server_key)
+        if res is None:
+            return {}
+        return json.loads(str(res).replace("'", '"'))
+
     @classmethod
     def create_session(cls) -> Self:
         """
-        Creates a RedisAssistant session using default connection information.
+        Creates a RedisRepository session using default connection information.
         
         Defaults: 
         - Address: 127.0.0.1
@@ -63,10 +75,9 @@ class RedisAssistant:
         Change these in `config.toml`
 
         """
-        if not os.path.exists('config.toml'):
-            with open('config.toml', 'w') as fp:
-                toml.dump(DEFAULT_TOML_CONF, fp)
-        with open('config.toml', 'r') as fp:
+
+        create_config_if_not_exists()
+        with open(CONFIG_PATH, 'r') as fp:
             data = toml.load(fp).get('redis_user', None)
         address, port = data.get('redis_address', '127.0.0.1'), data.get('redis_port', 6379)
         return cls(address, port)

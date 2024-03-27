@@ -3,11 +3,7 @@ import json
 import os
 import sys
 from typing import Callable, Iterable, Iterator, Optional, Set
-from GameType import GameType
-from MinecraftServer import MinecraftServer
-from RedisAssistant import RedisAssistant
-from ServerGroup import ServerGroup
-from ServerType import ServerType
+from DarplexAssistant import MinecraftServer, RedisRepository, ServerGroup
 
 LOGO = """
 
@@ -40,7 +36,10 @@ def menu() -> None:
     print(52 * ' ' + 'edit-server-group : Edit existing redis key options. Enters you into setup mode.')
     print(52 * ' ' + 'view-server-group-info : View existing redis key options. Enters you into viewer mode.') 
     print(52 * ' ' + 'deploy-servergroup : Deploy server group. Starts up server.\n')
+    print(52 * ' ' + 'view-monitor-logs : View ServerMonitor logs.')
+    print(52 * ' ' + 'attach-server-monitor : Attach ServerMonitor to screen.')
     print(52 * ' ' + 'start-monitor : Start ServerMonitor.')
+    print(52 * ' ' + 'stop-monitor : Start ServerMonitor.')
     print(52 * ' ' + 'monitor : Links you to DarplexMonitor.')
     print(52 * ' ' + 'exit : Exits the program.')
 
@@ -50,7 +49,7 @@ def print_servers() -> None:
     Returns all servers and their online statuses.
     (Simplified version of view_server_statuses)
     """
-    ra = RedisAssistant.create_session()
+    ra = RedisRepository.create_session()
     server_group_names = set(ra.get_server_groups())
     if len(set(server_group_names)) > 0:
         largest_sg_name: str = next(iter(sorted(server_group_names, key=len, reverse=True)))
@@ -80,11 +79,11 @@ def print_servers() -> None:
     ra.redis.close()
 
 
-def view_server_statuses() -> None:
+def view_server_statuses() -> None: #TODO: Update every 2-3 seconds until user input received. 
     """
     Returns detailed server uptime statistics.
     """
-    ra = RedisAssistant.create_session()
+    ra = RedisRepository.create_session()
     server_group_names = ra.get_server_groups()
     max_ram = 0
     ram_usage = 0
@@ -126,16 +125,17 @@ def view_server_statuses() -> None:
             print(f'            - Last uptime: {offline_server.uptime} hours') 
         print()
     if max_ram != 0: 
-        print(f'Total ram usage: {ram_usage}MB/{max_ram}MB; {round((ram_usage / max_ram) * 100)}% ram usage.')
+        print(f'Total ram usage: {ram_usage}MB/{max_ram}MB; {round((ram_usage / max_ram) * 100)}% of ram allocated has been used.')
     ra.redis.close()
 
 
 def get_redis_info() -> None:
     """View all current redis keys."""
-    ra = RedisAssistant.create_session()
+    ra = RedisRepository.create_session()
     keys = sorted(ra.redis.scan_iter('*'))
     for key in keys:
         print(key)
+    ra.redis.close()
 
 
 def setup_redis() -> None:
@@ -176,14 +176,27 @@ def deploy_server_group() -> None:
     pass
 
 
-def start_monitor() -> None: #async / different window?. Monitor logs
-    """Start ServerMonitor."""
-    print('listening.......')
+def start_monitor() -> None: 
+    """Starts ServerMonitor."""
+    pass
+
+
+def stop_monitor() -> None:
     pass
 
 
 def link_to_monitor() -> None:
     """Links you to DarplexMonitor."""
+    pass
+
+
+def view_monitor_logs() -> None:
+    """Clears screen and shows ServerMonitor logs."""
+    pass
+
+
+def attach_monitor():
+    """Attaches ServerMonitor to screen"""
     pass
 
 
@@ -196,7 +209,10 @@ COMMAND_TO_FUNC: dict[str, Callable] = {
     'edit-server-group': edit_server_group,
     'view-server-group-info': view_server_group_info,
     'deploy-servergroup': deploy_server_group,
+    'view-monitor-logs': view_monitor_logs,
+    'attach-server-monitor': attach_monitor,
     'start-monitor': start_monitor,
+    'stop-monitor': stop_monitor,
     'monitor': link_to_monitor,
     'exit': exit
 }

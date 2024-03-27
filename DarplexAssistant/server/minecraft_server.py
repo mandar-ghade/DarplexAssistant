@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
 from typing import Iterator, Optional, Self
-from GameJoinStatus import GameJoinStatus
-from GameStatusDisplay import GameStatusDisplay
-from RedisAssistant import RedisAssistant
+
+from ..repository import RedisRepository
+from ..utils import GameJoinStatus, GameStatusDisplay, Region
 
 
 class MinecraftServerNotExistsException(Exception):
@@ -12,7 +12,7 @@ class MinecraftServerNotExistsException(Exception):
 
 
 def get_minecraft_server_json_value(server_name: str, key: str) -> str:
-    ra = RedisAssistant.create_session()
+    ra = RedisRepository.create_session()
     resp = ra.redis.get(f'serverstatus.minecraft.US.{server_name}')
     if resp is None:
         return '-1'
@@ -31,9 +31,9 @@ def get_attribute_by_motd(motd: str, attribute: str) -> Optional[str]:
 
 
 def get_if_exists(server_name: str) -> bool:
-    ra = RedisAssistant.create_session()
-    exists = ra.redis.get(f'serverstatus.minecraft.US.{server_name}') is not None
-    ra.redis.close()
+    r = RedisRepository.create_session()
+    exists = r.redis.get(f'serverstatus.minecraft.US.{server_name}') is not None
+    r.redis.close()
     return exists
 
 
@@ -147,14 +147,14 @@ class MinecraftServer:
 
     @property
     def is_online(self) -> bool:
-        if not self.exists and not self.current_time:
+        if not self.current_time:
             return False
         self._is_online = datetime.now().timestamp() - self.current_time.timestamp() <= 10000 
         return self._is_online
 
     @property
     def uptime(self) -> Optional[timedelta]:
-        if not self.exists or not self.current_time or not self.start_up_date:
+        if not self.current_time or not self.start_up_date:
             return None
         return self.current_time - self.start_up_date
 
@@ -184,7 +184,7 @@ class MinecraftServer:
         return self._exists
 
     def get_create_cmd(self) -> str:
-        ra = RedisAssistant.create_session()
+        ra = RedisRepository.create_session()
         if not ra.server_group_exists(self.group): # just in case 
             return ''
         data: dict[str, str] = json.loads(str(ra.redis.hgetall(f'servergroups.{self.group}')).replace("'", '"'))
@@ -205,7 +205,8 @@ class MinecraftServer:
         return f'python3 stopServer.py 127.0.0.1 {self.name}'
     
     def _needs_restart(self) -> bool:
-        return self.is_online and ('Restarting' in self.motd or 'Finished' in self.motd)
+        return self.is_online and ('Restarting' in self.motd 
+                                   or 'Finished' in self.motd)
 
     def __hash__(self) -> int:
         return hash(self.name)
@@ -217,20 +218,26 @@ class MinecraftServer:
 
     @classmethod
     def convert_to_minecraft_server(cls, server: str) -> Self:
-        ra = RedisAssistant.create_session()
-        ms_name = f'serverstatus.minecraft.US.{server}'
-        ms = ra.redis.get(ms_name)
-        if ms is None:
-            raise MinecraftServerNotExistsException 
-        ms = json.loads(str(ms))
-        ra.redis.close()
+        """
+        Converts to `MinecraftServer` from existing ServerStatus cache.
+        Will return `MinecraftServerNotExistsException` if DNE.
+
+        """
+        repository = RedisRepository.create_session()
+        minecraft_server = repository.get_server_status_dict(server, Region.US)
+        repository.close_connection()
+        name: Optional[str] = None
+        if minecraft_server is None:
+            raise MinecraftServerNotExistsException
+        elif (name := minecraft_server.get('_name')) is None:
+            raise MinecraftServerNotExistsException
         return cls(
-            name = ms.get('_name')
+            name = name
         )
 
 
 def get_minecraft_servers_by_prefix(prefix: str) -> Iterator[MinecraftServer]:
-    ra = RedisAssistant.create_session()
+    ra = RedisRepository.create_session()
     for group in ra.redis.scan_iter(f'serverstatus.minecraft.US.{prefix}-*'):
         group_name: str = group.replace('serverstatus.minecraft.US.', '')
         yield MinecraftServer.convert_to_minecraft_server(group_name)

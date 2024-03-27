@@ -1,5 +1,12 @@
+import os
+from pathlib import Path
 from typing import Optional
-from Region import Region
+
+import toml
+from .region import Region
+
+
+CONFIG_PATH = (Path(__file__) / '../../' / 'config' / 'config.toml').resolve()
 
 
 ARCADE_DICT = {
@@ -112,6 +119,37 @@ GAMEMODES_TO_BOOSTER_GROUPS = {
 }
 
 
+DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
+    'redis_user': {
+        'redis_address': '127.0.0.1',
+        'redis_port': 6379
+    },
+    'server_monitor_options': {
+        'region': 'US',
+        'ram': 6000,
+        'servers_directory': 'home/mineplex/servers',
+        'jars_directory': 'home/mineplex/jars',
+        'world_zip_folder_directory': 'home/mineplex/worlds'
+    },
+    'sql': {
+        'address': '127.0.0.1',
+        'port': 3306,
+        'username': 'root',
+        'password': 'password'
+    },
+    'api': {
+        'address': '127.0.0.1'
+    },
+    'microservice_ports': {
+        'accounts': 1000,
+        'amplifiers': 1000,
+        'antispam': 1000,
+        'enderchest': 1000,
+        'banner': 1000
+    }
+}
+
+
 def npc_name_from_prefix(prefix: str) -> str:
     for gamemode, prefixes in GAMEMODE_SERVERS.items():
         if prefix not in prefixes:
@@ -130,4 +168,9 @@ def get_region_by_str(region_str: str) -> Region:
             continue
         return region
     return Region.US #failsafe
+
+def create_config_if_not_exists() -> None:
+    if not os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'w') as fp:
+            toml.dump(DEFAULT_TOML_CONF, fp)
 
