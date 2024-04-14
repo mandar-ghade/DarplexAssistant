@@ -119,7 +119,7 @@ GAMEMODES_TO_BOOSTER_GROUPS = {
 }
 
 
-DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
+DEFAULT_TOML_CONF: dict[str, dict[str, str | int | list]] = {
     'redis_user': {
         'redis_address': '127.0.0.1',
         'redis_port': 6379
@@ -129,7 +129,9 @@ DEFAULT_TOML_CONF: dict[str, dict[str, str | int]] = {
         'ram': 6000,
         'servers_directory': 'home/mineplex/servers',
         'jars_directory': 'home/mineplex/jars',
-        'world_zip_folder_directory': 'home/mineplex/worlds'
+        'world_zip_folder_directory': 'home/mineplex/worlds',
+        'traditional_db_config': False,
+        'excluded_servers': [],
     },
     'sql': {
         'address': '127.0.0.1',
@@ -160,14 +162,14 @@ def npc_name_from_prefix(prefix: str) -> str:
 
 def get_region_by_str(region_str: str) -> Region:
     """
-    Returns matching Region object to region_str.
-    Defaults to Region.US.
+    Returns matching `Region` region_str.
+    Defaults to Region.ALL.
     """
     for region in Region:
         if region.value != region_str:
             continue
         return region
-    return Region.US #failsafe
+    return Region.ALL #failsafe
 
 def create_config_if_not_exists() -> None:
     if not os.path.exists(CONFIG_PATH):

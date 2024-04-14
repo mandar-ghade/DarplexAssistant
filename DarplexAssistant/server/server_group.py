@@ -1,9 +1,8 @@
 from dataclasses import dataclass
+from pprint import pprint
 from typing import Iterator, Optional, Self
-
-
 from .minecraft_server import MinecraftServer, get_minecraft_servers_by_prefix
-from ..repository import RedisRepository
+from ..repository import get_redis_repo
 from ..utils import get_region_by_str, Region
 
 
@@ -30,7 +29,7 @@ class ServerGroup:
     ram: int
     totalServers: int
     joinableServers: int
-    portSection: int
+    portSection: Optional[int]
     arcadeGroup: bool
     worldZip: str
     plugin: str
@@ -72,28 +71,33 @@ class ServerGroup:
     portalTopCornerLocation: str = '' 
     npcName: str = ''
     cpu: int = 1
-    _servers: Iterator[MinecraftServer] = iter([])
 
     def _exists(self) -> bool:
         """Returns if ServerGroup exists in Redis DB."""
-        repository = RedisRepository.create_session()
-        exists = repository.server_group_exists(self.prefix)
-        repository.redis.close()
-        return exists
+        with get_redis_repo() as repository:
+            return repository.server_group_exists(self.prefix) 
 
     def __post_init__(self) -> None:
+        if self._exists():
+            for key, value in self.parameterize_server_group_dict(self.prefix).items():
+                setattr(self, key, value)
+        with get_redis_repo() as repo:
+            if self.portSection is None or (not self._exists and repo.get_if_port_conflicts(self.portSection)):
+                self.portSection = repo.next_available_port()
         self._servers = self.servers
 
     @property
     def servers(self) -> Iterator[MinecraftServer]:
-        self._servers = iter(filter(lambda server: server.exists, get_minecraft_servers_by_prefix(self.prefix)))
-        return self._servers
+        yield from filter(lambda server: server.exists,
+                          get_minecraft_servers_by_prefix(self.prefix, self.region))
 
     def _convert_to_dict(self) -> dict[str, str]:
         """Converts ServerGroup object to dictionary."""
-        return dict((key, convert_to_str(val)) for key, val in self.__dict__.items())
+        return dict((key, convert_to_str(val)) for key, val in self.__dict__.items() if key != '_servers')
 
     def get_create_cmd(self, server_num: int) -> str:
+        """Gets create server command for the `startServer.py` script"""
+        assert isinstance(self.portSection, int)
         return (f'python3 startServer.py 127.0.0.1 127.0.0.1 {self.portSection + server_num}'
                 f' {self.ram}'
                 f' {self.worldZip}'
@@ -101,104 +105,105 @@ class ServerGroup:
                 f' {self.configPath}'
                 f' {self.prefix}'
                 f' {self.prefix}-{server_num}'
-                f' {convert_to_str(self.region == Region.US)}'
+                f' {convert_to_str(self.region in (Region.US, Region.ALL))}'
                 f' {convert_to_str(self.addNoCheat)}'
                 f' {convert_to_str(self.addWorldEdit)}')
 
     def get_delete_cmd(self, server_num: int) -> str:
+        """Gets delete server command for the `stopServer.py` script"""
         return f'python3 stopServer.py 127.0.0.1 {self.prefix}-{server_num}'
 
-    def _create(self) -> None:
+    def increment_total_servers(self) -> None:
+        """Increments `totalServers` by one.
+        (Internal method)."""
+        # TODO: Fix for Lobby creation
+        with get_redis_repo() as repo:
+            repo.redis.hset(f'servergroups.{self.prefix}', 'totalServers', f'{self.totalServers+1}')
+            self.totalServers += 1
+
+    def decrement_total_servers(self) -> None:
+        """Decrements `totalServers` by one. (`totalServers` >= 0).
+        (Internal method)."""
+        with get_redis_repo() as repo:
+            if self.totalServers - 1 < 0:
+                return
+            repo.redis.hset(f'servergroups.{self.prefix}', 'totalServers', f'{self.totalServers-1}')
+            self.totalServers -= 1
+
+    def set_total_servers(self, count: int) -> None:
+        """Set totalServers to specified `count`"""
+        with get_redis_repo() as repo:
+            repo.redis.hset(f'servergroups.{self.prefix}', 'totalServers', f'{count}')
+
+    def deploy_minecraft_servers(self, count: int) -> None:
+        """Creates `count` number of `MinecraftServer`s.
+        Check `RedisRepository`.`server_group_exists` before expecting new instances"""
+        for _ in range(count):
+            self.increment_total_servers()
+
+    def remove_minecraft_servers(self, count: int) -> None:
+        """Deletes `count` number of `MinecraftServer`s.
+        Will only work if server group exists in Redis.
+        (Check with `RedisRepository`'s `server_group_exists`).
         """
-        (Do not use this method.
-        Direct implementation and proper usage is shown below)
-        
-        Creates the ServerGroup key in Redis.
+        for _ in range(count):
+            self.decrement_total_servers()
+
+    def create(self) -> None:
+        """Creates the ServerGroup key in Redis.
         Only creates key if not exists. 
         Does not rewrite data.
 
-        Use with ServerType and GameType modules.
-        
-        >>> from ServerType import ServerType
-        >>> from GameType import GameType
-
-        >>> ServerType(GameType.Micro).options._convert_to_server_group().create()
-        None
-        
+        Can also be used within GameOptions module.
         Proper usage:
 
-        >>> from ServerType import ServerType
-        >>> from GameType import GameType
-        
-        >>> ServerType(GameType.Micro).create()
+        >>> from DarplexAssistant import GameOptions
+        >>> server_group = GameOptions.convert_from_game(GameOptions.Micro)._convert_to_server_group()
+        ServerGroup
+        >>> server_group.delete()
         None
+        """
+        with get_redis_repo() as repo:
+            while self.portSection is None or (not self._exists() and repo.get_if_port_conflicts(self.portSection)):
+                self.portSection = repo.generate_random_port()
+            repo.create_server_group(self.prefix, self._convert_to_dict())
 
-        """
-        ra = RedisRepository.create_session()
-        if ra.server_group_exists(self.prefix):
-            return
-        ra.redis.sadd('servergroups', self.prefix)
-        ra.redis.hmset(f'servergroups.{self.prefix}', self._convert_to_dict())
-        ra.redis.close()
-    
-    def _overwrite(self) -> None:
-        """
-        Recreates Redis ServerGroup.
-        """
-        ra = RedisRepository.create_session()
-        if ra.server_group_exists(self.prefix):
-            self._delete()
-        self._create()
-        ra.redis.close()
+    def overwrite(self) -> None:
+        """Recreates Redis ServerGroup."""
+        with get_redis_repo() as repo:
+            if repo.server_group_exists(self.prefix):
+                self.delete()
+            self.create()
 
-    def _delete(self) -> None:
-        """
-        (Do not use this method.
-        Direct implementation and proper usage is shown below)
-
-        Creates the ServerGroup key in Redis.
-        Only creates key if not exists. 
+    def delete(self) -> None:
+        """Deletes the ServerGroup key in Redis.
+        Only deletes key if exists. 
         Does not rewrite data.
 
-        Use with Game module.
-        
-        >>> from ServerType import ServerType
-        >>> from GameType import GameType
-
-        >>> ServerType(GameType.Micro).options._convert_to_server_group().delete()
-        None
-        
+        Can also be used with GameOptions module.
         Proper usage:
 
-        >>> from ServerType import ServerType
-        >>> from GameType import GameType
+        >>> from DarplexAssistant import GameOptions
         
-        >>> ServerType(GameType.Micro).delete()
+        >>> server_group = GameOptions.convert_from_game(GameOptions.Micro)._convert_to_server_group()
+        ServerGroup
+        >>> server_group.delete()
+
         None
-
         """
-        ra = RedisRepository.create_session()
-        if not ra.server_group_exists(self.prefix):
-            return
-        ra.redis.srem('servergroups', self.prefix)
-        ra.redis.delete(f'servergroups.{self.prefix}')
-        ra.redis.close()
+        with get_redis_repo() as repo:
+            repo.delete_server_group(self.prefix)
 
-    @classmethod
-    def convert_to_server_group(cls, prefix: str) -> Self:
-        """Converts to ServerGroup object from prefix (if it exists in redis)."""
-        ra = RedisRepository.create_session()
-        next_port = ra.next_available_port()
-        data: Optional[dict[str, str]] = ra.redis.hgetall(f'servergroups.{prefix}')
-        if data is None:
-            raise ServerGroupNotExistsException
-        ra.redis.close()
-        return cls(
+    @staticmethod
+    def parameterize_server_group_dict(prefix: str) -> dict[str, str | int | Region | bool]:
+        with get_redis_repo() as repository:
+            data = repository.get_server_group_dict(prefix).copy()
+        return dict(
             prefix = data.get('prefix', ''),
             ram = int(data.get('ram', 512)),
             totalServers = int(data.get('totalServers', 0)),
             joinableServers = int(data.get('joinableServers', 0)),
-            portSection = int(data.get('portSection', next_port)),
+            portSection = int(data.get('portSection', repository.next_available_port())),
             arcadeGroup = data.get('arcadeGroup') == 'true',
             worldZip = data.get('worldZip', 'lobby.zip'),
             plugin = data.get('plugin', 'Hub.jar'),
@@ -234,11 +239,24 @@ class ServerGroup:
             staffOnly = data.get('staffOnly') == 'true', 
             whitelist = data.get('whitelist') == 'true', 
             resourcePack = data.get('resourcePack', ''),
-            region = get_region_by_str(data.get('region', '')),
+            region = get_region_by_str(data.get('region', '')), # defaults to US anyways
             teamServerKey = data.get('teamServerKey', ''),
             portalBottomCornerLocation = data.get('portalBottomCornerLocation', ''),
             portalTopCornerLocation = data.get('portalTopCornerLocation', ''),
             npcName = data.get('npcName', ''),
             cpu = int(data.get('cpu', 1))
         )
+
+    def __hash__(self) -> int:
+        return hash(self.prefix)
+
+    def __eq__(self, other: object) -> bool:
+        return hash(self) == hash(other)
+
+    @classmethod
+    def convert_to_server_group(cls, prefix: str) -> Self:
+        """Converts to ServerGroup object from prefix (if it exists in redis).
+        If ServerGroup not found, raises `ServerGroupNotExistsException`.
+        """
+        return cls(**ServerGroup.parameterize_server_group_dict(prefix)) # type: ignore
 

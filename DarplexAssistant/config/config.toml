@@ -4,10 +4,12 @@ redis_port = 6379
 
 [server_monitor_options]
 region = "US"
-ram = 6000
+ram = 4000
 servers_directory = "home/mineplex/servers"
 jars_directory = "home/mineplex/jars"
 world_zip_folder_directory = "home/mineplex/worlds"
+traditional_db_config = false
+excluded_servers = ['Clans', 'ClansHub']
 
 [sql]
 address = "127.0.0.1"

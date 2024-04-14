@@ -1,3 +1,3 @@
-from .game_options import GameOptions
+from .game_options import Game, GameOptions
 
-__all__ = ('GameOptions', )
+__all__ = ('GameOptions', 'Game')

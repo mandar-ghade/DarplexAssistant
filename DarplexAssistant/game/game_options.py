@@ -1,11 +1,19 @@
 from dataclasses import dataclass
 from typing import ClassVar, Self, Union
+from DarplexAssistant.repository.redis_repository import get_redis_repo
+
+from DarplexAssistant.utils.redis_utils import GAMEMODE_SERVERS
+from DarplexAssistant.utils.region import Region
 
 from ..repository import RedisRepository 
 from ..server import ServerGroup
 from ..utils import GAMEMODES_TO_BOOSTER_GROUPS, GAMEMODES_TO_GAME_DISPLAY, REDIS_KEYS_TO_GAME_DISPLAY, TEAM_SERVER_KEYS, npc_name_from_prefix
 
+class GameTypeNotExistsException(Exception):
+    pass
+
 type Game = tuple[bool | int | str, ...]
+
 
 @dataclass
 class GameOptions:
@@ -74,81 +82,154 @@ class GameOptions:
                         False, False, True, 
                         True, True, True, 
                         False, True, False)
+    DEFAULT_GAMES: ClassVar[set[str]] = {'BaconBrawl',
+                                         'Bridge',
+                                         'ChampionsCTF',
+                                         'ChampionsDOM',
+                                         'Lobbers',
+                                         'DeathTag',
+                                         'DragonEscape',
+                                         'Dragons'
+                                         'Evolution',
+                                         'Micro',
+                                         'MilkCow',
+                                         'Paintball',
+                                         'Quiver',
+                                         'Runner',
+                                         'Sheep',
+                                         'Snake',
+                                         'SneakyAssassins',
+                                         'Spleef',
+                                         'SquidShooter',
+                                         'TurfWars',
+                                         'WitherAssault'}.union(REDIS_KEYS_TO_GAME_DISPLAY.values()) \
+                                                         .union(GAMEMODES_TO_GAME_DISPLAY.values())
+    
+    @staticmethod
+    def _get_npc_name(prefix: str) -> str:
+        """Gets `npcName` by prefix.
+        Manually check if it is a team server key using: 
+        >>> GameOptions._is_team_server(prefix='...')
+        (returns bool)
+        If it is a team server, `npcName` should manually be set to '' before inserting.
+        """
+        for gamemode, prefixes in GAMEMODE_SERVERS.items():
+            if prefix not in prefixes:
+                continue
+            return gamemode
+        return ''
+
+    @staticmethod
+    def _get_booster_group(npc_name: str) -> str:
+        return GAMEMODES_TO_BOOSTER_GROUPS.get(npc_name, '')
+
+    @staticmethod
+    def _get_games(prefix: str, npc_name: str) -> str:
+        if prefix == 'MIN':
+            return ','.join(GameOptions.DEFAULT_GAMES)
+        return REDIS_KEYS_TO_GAME_DISPLAY.get(prefix, GAMEMODES_TO_GAME_DISPLAY.get(npc_name, 'null'))
+
+    @staticmethod
+    def _get_team_server_key(prefix: str) -> str:
+        """Returns matching team server key to non-team server.
+        Returns '' if DNE."""
+        return TEAM_SERVER_KEYS.get(prefix, '')
+
+    @staticmethod
+    def _is_team_server(prefix: str) -> bool:
+        """Returns whether ServerGroup is a team server.
+        If it is, `npcName`=''"""
+        return prefix in TEAM_SERVER_KEYS.values()
+
+    def _get_server_group_args(self) -> tuple[str | bool | int | Region, ...]:
+        """Returns ServerGroup insertable arguments."""
+        npc_name = self._get_npc_name(self.prefix)
+        booster_group = self._get_booster_group(npc_name)
+        games = self._get_games(self.prefix, npc_name)
+        if self._is_team_server(self.prefix):
+            npc_name = ''
+        team_server_key = self._get_team_server_key(self.prefix)
+        with get_redis_repo() as repo:
+            port = repo.next_available_port()
+        return (self.prefix, 512, 0, 0,
+                port, self.arcadeGroup, self.worldZip,
+                self.plugin, self.configPath, self.prefix,
+                '', self.minPlayers, self.maxPlayers,
+                self.pvp, self.tournament, self.tournamentPoints,
+                games, '', booster_group, self.serverType, self.addNoCheat,
+                self.addWorldEdit, self.teamRejoin, self.teamAutoJoin,
+                self.teamForceBalance, self.gameAutoStart, self.gameTimeout,
+                self.gameVoting, self.mapVoting, self.rewardGems,
+                self.rewardItems, self.rewardStats, self.rewardAchievements,
+                self.hotbarInventory, self.hotbarHubClock, self.playerKickIdle,
+                False, False, False, '', Region.US, team_server_key, '',
+                '', npc_name)
+
 
     def _convert_to_server_group(self) -> ServerGroup:
         """Converts GameOptions to ServerGroup."""
-        ra = RedisRepository.create_session()
-        if ra.server_group_exists(self.prefix):
-            return ServerGroup.convert_to_server_group(self.prefix)
-        ra.redis.close()
-        npcName = npc_name_from_prefix(self.prefix)
-        boosterGroup = GAMEMODES_TO_BOOSTER_GROUPS.get(npcName, '')
-        games = REDIS_KEYS_TO_GAME_DISPLAY.get(self.prefix, GAMEMODES_TO_GAME_DISPLAY.get(npcName, 'null'))
-        if self.prefix == 'MIN':
-            games = 'BaconBrawl,Lobbers,DeathTag,DragonEscape,Dragons,Evolution,Micro,MilkCow,Paintball,Quiver,Runner,Sheep,Snake,SneakyAssassins,Spleef,SquidShooter,TurfWars,WitherAssault'
-        if self.prefix in TEAM_SERVER_KEYS.values():
-            npcName = ''
-        teamServerKey = TEAM_SERVER_KEYS.get(self.prefix, '')
-        return ServerGroup(self.prefix, 512, 0, 0, 
-                           ra.next_available_port(), self.arcadeGroup, 
-                           self.worldZip, self.plugin, self.configPath, self.prefix, '', self.minPlayers,
-                           self.maxPlayers, self.pvp, self.tournament, self.tournamentPoints, games, '', 
-                           boosterGroup, self.serverType, self.addNoCheat, self.addWorldEdit, self.teamRejoin, 
-                           self.teamAutoJoin, self.teamForceBalance, self.gameAutoStart, self.gameTimeout,
-                           self.gameVoting, self.mapVoting, self.rewardGems, self.rewardItems, self.rewardStats, 
-                           self.rewardAchievements, self.hotbarInventory, self.hotbarHubClock, self.playerKickIdle, 
-                           teamServerKey=teamServerKey, npcName=npcName
-                           )
+        with get_redis_repo() as repository:
+            if repository.server_group_exists(self.prefix):
+                return ServerGroup.convert_to_server_group(self.prefix)
+        server_group_insertable_arguments = self._get_server_group_args()
+        return ServerGroup(*server_group_insertable_arguments) # type: ignore
 
     def create(self) -> None:
-        """
-        Creates ServerGroup key in Redis from GameOptions.
+        """Creates ServerGroup key in Redis from GameOptions.
         Only creates key if not exists. 
         Does not rewrite data.
 
-        >>> from GameType import GameType
-        >>> from ServerType import ServerType
-        
-
-        >>> ServerType(GameType.Micro).create()
+        >>> from DarplexAssistant import GameOptions
+        >>> GameOptions.convert_from_game(GameOptions.MixedArcade).create()
         None
 
-        >>> ServerType('Micro').create()
-        None
-        
         """
-        sg = self._convert_to_server_group()
-        sg._create()
+        server_group = self._convert_to_server_group()
+        server_group.create()
 
     def delete(self) -> None:
         """
         Deletes ServerGroup key in Redis.
         Only deletes key if exists (no need for checking manually).
         
-        >>> from GameType import GameType
-        >>> from ServerType import ServerType
-       
-
-        >>> ServerType(GameType.Micro).delete()
-        None
-
-        >>> ServerType('Micro').delete()
-        None
+        >>> from DarplexAssistant import GameOptions
+        >>> GameOptions.convert_from_game(GameOptions.Micro).delete()
+        None 
         
         """
-        sg = self._convert_to_server_group()
-        sg._delete()
+        server_group = self._convert_to_server_group()
+        server_group.delete()
+
+    def overwrite(self) -> None:
+        """
+        Overwrites ServerGroup key in Redis from GameOptions.
+        Usage:
+
+        >>> from DarplexAssistant import GameOptions
+        >>> GameOptions.convert_from_game(GameOptions.SkywarsTeams).overwrite()
+        None
+
+        """
+        server_group = self._convert_to_server_group()
+        server_group.overwrite()
 
     def exists(self) -> bool:
         """Returns if ServerGroup with same prefix exists."""
-        ra = RedisRepository.create_session()
-        exists = ra.server_group_exists(self.prefix)
-        ra.redis.close()
-        return exists
+        
+        with get_redis_repo() as repo:
+            return repo.server_group_exists(self.prefix)
 
+    @staticmethod
+    def get_stored_games() -> dict[str, Game]:
+        return dict((attr, getattr(GameOptions, attr))
+                    for attr in dir(GameOptions)
+                    if not callable(getattr(GameOptions, attr))
+                    and not (attr.startswith('__') or attr[0].islower())
+                    and attr != 'DEFAULT_GAMES')
+    
     @classmethod
     def convert_from_game(cls, 
-        game_options: tuple[Union[bool, int, str], ...]
+        game: Game | str
     ) -> Self:
         """
         Expands tuple of GameOption arguments (class variable) into GameOptions object.
@@ -156,7 +237,14 @@ class GameOptions:
 
         >>> from DarplexAssistant import GameOptions
         >>> GameOptions.convert_from_game_type(GameOptions.Micro)
-
+        GameOptions(prefix='MB', ...) 
+        >>> GameOptions.convert_from_game_type('Micro')
+        GameOptions(prefix='MB', ...)
         """
-        return cls(*game_options) 
+        games: dict[str, Game] = GameOptions.get_stored_games()
+        if isinstance(game, str):
+            game = games.get(game.strip(), '')
+        if game == '' or game not in games.values():
+            raise GameTypeNotExistsException()
+        return cls(*game) # type: ignore
 

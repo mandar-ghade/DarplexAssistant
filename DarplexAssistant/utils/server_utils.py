@@ -1,7 +1,4 @@
 from pathlib import Path
-from typing import Iterable, Iterator
-
-# from ..server.minecraft_server import MinecraftServer
 
 
 SERVER_PROPERTIES: dict[str, str | bool] = {
@@ -36,12 +33,4 @@ def write_to_file(path: Path, data: dict[str, str | bool] | dict[str, str], symb
                                                  if isinstance(data[name], bool) 
                                                  else str(data[name])) 
                                 for name in data)))
-
-
-# def filter_servers(servers: Iterable[MinecraftServer]) -> Iterator[MinecraftServer]:
-#     it = iter(servers)
-#     for server in it:
-#         if not server.exists:
-#             continue
-#         yield server
 

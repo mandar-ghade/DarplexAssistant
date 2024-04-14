@@ -8,7 +8,8 @@ from zipfile import ZipFile
 
 from ..utils import (BUKKIT_YML_DICT, 
                      DATABASES,
-                     DEFAULT_TOML_CONF, 
+                     DEFAULT_TOML_CONF,
+                     CONFIG_PATH,
                      create_config_if_not_exists,
                      MICROSERVICES,
                      REDIS_CONN_NAMES,
@@ -16,6 +17,7 @@ from ..utils import (BUKKIT_YML_DICT,
                      SERVER_PROPERTIES,
                      SPIGOT_YML_DICT,
                      write_to_file)
+
 
 
 def start_server(
@@ -30,10 +32,40 @@ def start_server(
     add_anticheat: bool,
     add_worldedit: bool
 ) -> None:
-
+    """Creates Minecraft server locally based on `config.toml` configuration.
+    For this module to work, modify:
+    - `server_monitor_options`:
+        - `ram`: max ram you want to allocate. (will not exceed usage threshold)
+        - `server_directory`: path to your servers folder. Where your servers will be generated.
+        - `jars_directory`: Directory of all your jar files.
+        - `world_zip_folder_directory`: Directory of all zipped world files.
+            - Ensure the following exist in the directory:
+                - `lobby.zip` - Lobby 
+                - `Lobby_MPS.zip` - For Multiplayer Private Servers (MPSes)
+                - `Lobby_MCS.zip` - For Community Servers.
+                - `arcade.zip` - For all Arcade servers.
+                - `ClansHub.zip` - For ClansHub server.
+            All zip files must contain a `world` folder.
+        - `traditional_db_config`: If `db-config.dat` generation should be traditional.
+            - `false` for all `mineplex-crepe` and `mineplex-reborn` users.
+            - `true` for all `mineplex-reborn` and `mineplex-original` users.
+            - Traditional output:
+                ```
+                ACCOUNT 127.0.0.1:3306/account user password
+                PLAYER_STATS 127.0.0.1:3306/player_stats user password
+                ```
+            - Non-traditional output (custom):
+                ```
+                    ACCOUNT 127.0.0.1:3306 user password
+                    PLAYER_STATS 127.0.0.1:3306 user password
+                ```
+        - `excluded_servers`:
+            - List of servers you want DarplexServerMonitor to ignore
+    - `sql`
+    """
     create_config_if_not_exists()
 
-    with open('../config/config.toml', 'r') as fp:
+    with open(CONFIG_PATH, 'r') as fp:
         data = toml.load(fp)
 
     monitor_options = data.get('server_monitor_options', DEFAULT_TOML_CONF['server_monitor_options'])
@@ -84,6 +116,10 @@ def start_server(
         '  password': SQL_PASSWORD,
     }
 
+    if not is_us:
+        with open(SERVER_PATH / 'eu.dat', 'w') as _: # creates eu.dat file if Region != US
+           pass 
+
 
     write_to_file(SERVER_PATH / 'server.properties', server_properties, '=')
     write_to_file(SERVER_PATH / 'bukkit.yml', BUKKIT_YML_DICT)
@@ -111,6 +147,7 @@ def start_server(
     os.makedirs(SERVER_PATH / config_path)
 
     write_to_file(SERVER_PATH / config_path / 'config.yml', plugin_config_dict)
+
 
     with open(SERVER_PATH / 'api-config.dat', 'w') as writer:
         writer.write('\n'.join(

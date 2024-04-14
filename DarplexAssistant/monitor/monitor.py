@@ -2,13 +2,15 @@ from pathlib import Path
 from time import perf_counter, sleep
 from typing import Callable
 import toml
+
+from DarplexAssistant.utils.redis_utils import CONFIG_PATH
 from ..utils import create_config_if_not_exists, DEFAULT_TOML_CONF
 from ..server import MinecraftServer
 
 
 create_config_if_not_exists()
 
-with open('../config/config.toml', 'r') as fp:
+with open(CONFIG_PATH, 'r') as fp:
     data = toml.load(fp).get('server_monitor_options', DEFAULT_TOML_CONF['server_monitor_options'])
 
 
@@ -19,17 +21,6 @@ JARS_DIRECTORY = Path(data.get('jars_directory'))
 WORLD_ZIP_DIR = Path(data.get('world_zip_folder_directory'))
 
 processes: list[Callable[[Callable, int], None]] = []
-
-
-def timer(func: Callable, seconds: int) -> None:
-    is_cancelled = False
-    def cancel() -> None:
-        is_cancelled = True
-    start = perf_counter()
-    while is_cancelled and func():
-        sleep(seconds - (perf_counter() - start))
-
-
 
 
 def start_or_restart_server(server: MinecraftServer, 
@@ -51,15 +42,20 @@ def check_server_count_change() -> None:
     Using timer
     """
 
+def check_personal_or_mcs() -> None:
+    """
+    Checks if Personal, Community, or Event servers need to be deployed
+    """
+    # TODO: Scan `COM`, `EVENT`, *, serverType == 'Player' 
 
 
 
 def start() -> None:
+    # TODO: Concurrency module
     pass
 
 
 def stop() -> None:
     for process in processes:
-        
-    pass
+        ...
 
