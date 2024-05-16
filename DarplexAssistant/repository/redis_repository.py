@@ -34,7 +34,7 @@ class RedisRepository:
         """Returns if `port` conflicts with any existing port sections in the Redis db."""
         return any(port - 10 <= port_section <= port + 10
                    for port_section in 
-                   map(lambda group: int(self.redis.hget(group, 'portSection')),
+                   map(lambda group: int(self.redis.hget(group, 'portSection') or 0),
                                          self.get_server_groups()))
 
     def create_server_group(self, prefix: str, data: dict[str, str]) -> None:

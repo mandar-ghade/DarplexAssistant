@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from pprint import pprint
 from typing import Iterator, Optional, Self
 from .minecraft_server import MinecraftServer, get_minecraft_servers_by_prefix
@@ -18,7 +19,7 @@ def convert_to_str(line: str | int | bool | Region) -> str:
         return str(line).lower()
     elif isinstance(line, int):
         return str(line)
-    elif isinstance(line, Region):
+    elif (isinstance(line, Region) or isinstance(line, Enum)):
         return line.value
 
 
@@ -112,6 +113,14 @@ class ServerGroup:
     def get_delete_cmd(self, server_num: int) -> str:
         """Gets delete server command for the `stopServer.py` script"""
         return f'python3 stopServer.py 127.0.0.1 {self.prefix}-{server_num}'
+
+    def is_player_server(self) -> bool:
+        """Returns `True` if `ServerGroup` is an MPS (Multiplayer Private Server) ServerGroup."""
+        return self.serverType == 'Player'
+
+    def is_event_server(self) -> bool:
+        """Returns `True` if `ServerGroup` is a COM (Community) ServerGroup"""
+        return self.serverType == 'Community'
 
     def increment_total_servers(self) -> None:
         """Increments `totalServers` by one.
